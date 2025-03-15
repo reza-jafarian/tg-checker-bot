@@ -15,10 +15,14 @@ class Telegram:
         
         self.push_token = 'c1yjMRh7QZCu-hmsSWwWi3:APA91bHk-q4LX-9Ga4AlduG9X0nU0r7Kk57Em8RJSDL0d1ni-4W2F_o5B1VJvCnIgk5pHCoqzrYWgpjCwNMQGL-t4NKHbR_6KPibkZ7q1ubXetEaKZdqorvYo_vdEZVaWj9BZni1Kdrp'
         
+        from src.utils.functions import (get_random_app_version, get_random_system_version, get_random_device_model)
         self.client = TelegramClient(
             session=StringSession(),
             api_id=self.api_id,
             api_hash=self.api_hash,
+            app_version=get_random_app_version(platform='android'),
+            system_version=get_random_system_version(platform='android'),
+            device_model=get_random_device_model(platform='android'),
             loop=None,
             receive_updates=False,
             entity_cache_limit=1
