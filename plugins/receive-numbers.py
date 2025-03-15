@@ -1,5 +1,5 @@
 from telethon import events
-import re, os
+import datetime, re, os
 
 from src.utils.keyboards import start_key
 from src.database.models import User
@@ -16,12 +16,25 @@ async def init(bot):
         numbers = list(set(map(lambda x: '+' + x if not x.startswith('+') else x, numbers)))
         
         if len(numbers) > 0:
-            processing = await event.reply(TEXTS['processing_1'][user_data.language])
+            if len(numbers) <= 5:
+                processing = await event.reply(TEXTS['processing_1'][user_data.language])
+                
+                await processing.edit(str(TEXTS['processing_2'][user_data.language]).format(len(numbers)))
+                checked_numbers = await event.reply(TEXTS['checked_numbers'][user_data.language]) 
+                
+                await check_numbers(event=event, user_id=user.id, numbers=numbers, checked_numbers=checked_numbers)
             
-            await processing.edit(str(TEXTS['processing_2'][user_data.language]).format(len(numbers)))
-            checked_numbers = await event.reply(TEXTS['checked_numbers'][user_data.language]) 
+            elif len(numbers) > 5 and user_data.datetime_subscription > datetime.datetime.now():
+                processing = await event.reply(TEXTS['processing_1'][user_data.language])
+                
+                await processing.edit(str(TEXTS['processing_2'][user_data.language]).format(len(numbers)))
+                checked_numbers = await event.reply(TEXTS['checked_numbers'][user_data.language]) 
+                
+                await check_numbers(event=event, user_id=user.id, numbers=numbers, checked_numbers=checked_numbers)
             
-            await check_numbers(event=event, user_id=user.id, numbers=numbers, checked_numbers=checked_numbers)
+            else:
+                await event.reply(TEXTS['not_have_subs'][user_data.language])
+                
     
     @bot.on(events.NewMessage(func=lambda e: e.is_private and e.file))
     async def receive_numbers_texts(event):

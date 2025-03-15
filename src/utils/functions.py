@@ -1,6 +1,6 @@
 from typing import Union
 import phonenumbers
-import python_socks
+import datetime
 import asyncio
 import random
 
@@ -5883,3 +5883,38 @@ async def check_numbers(event, user_id, numbers, checked_numbers, is_file=False)
     except Exception as error:
         logger.error(f'[check_numbers] -> Error: {error}')
         await checked_numbers.edit(TEXTS['error'][user_data.language])
+
+def add_time_to_now(time_str: str) -> str:
+    now = datetime.now()
+    time_units = {
+        "second": "seconds",
+        "seconds": "seconds",
+        "minute": "minutes",
+        "minutes": "minutes",
+        "hour": "hours",
+        "hours": "hours",
+        "day": "days",
+        "days": "days",
+        "week": "weeks",
+        "weeks": "weeks",
+        "month": "months",
+        "months": "months",
+        "year": "years",
+        "years": "years",
+    }
+    
+    matches = re.findall(r"(\d+)\s*(\w+)", time_str)
+    
+    delta = timedelta()
+    rdelta = relativedelta()
+
+    for amount, unit in matches:
+        amount = int(amount)
+        unit = unit.lower()
+        
+        if unit in ['month', 'months', 'year', 'years']:
+            rdelta += relativedelta(**{time_units[unit]: amount})
+        elif unit in time_units:
+            delta += timedelta(**{time_units[unit]: amount})
+
+    return now + delta + rdelta

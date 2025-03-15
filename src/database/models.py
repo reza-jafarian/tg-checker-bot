@@ -31,8 +31,9 @@ class User(BaseModel):
     step = peewee.CharField(max_length=255, default='none') # default: none
     language = peewee.CharField(max_length=5, default='fa') # default: English
     account_status = peewee.BooleanField(default=True) # default: Active (Free)
+    free_check = peewee.BigIntegerField(default=5) # default: 5
     datetime_joined = peewee.DateTimeField(default=datetime.datetime.now)
-    datetime_subscription = peewee.DateTimeField(default=lambda: datetime.datetime.now() + datetime.timedelta(days=1))
+    datetime_subscription = peewee.DateTimeField(default=lambda: datetime.datetime.now() + datetime.timedelta(days=0))
 
 
 db.connect()
