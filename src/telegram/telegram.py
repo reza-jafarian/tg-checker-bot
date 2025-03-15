@@ -47,30 +47,30 @@ class Telegram:
             response = await self.client.send_code_request(phone=self.phone_number)
             
             if isinstance(response.type, auth.SentCodeTypeSetUpEmailRequired):
-                return '[✔️][📧]'
+                return '[✔️][📧]', 'register'
             elif isinstance(response.type, auth.SentCodeTypeApp):
-                return '[📶]'
+                return '[📶]', 'session'
             elif isinstance(response.type, auth.SentCodeTypeSms):
-                return '[✔️][📩]'
+                return '[✔️][📩]', 'register'
             elif isinstance(response.type, auth.SentCodeTypeCall):
-                return '[✔️][📞]'
+                return '[✔️][📞]', 'session'
             elif isinstance(response.type, auth.SentCodeTypeEmailCode):
-                return '[📶][📧]'
+                return '[📶][📧]', 'sessions'
             else:
                 print(response.type)
                 
         except errors.rpcerrorlist.PhoneNumberBannedError:
-            return '[🚫]'
+            return '[🚫]', 'ban'
         except errors.rpcerrorlist.PhoneNumberInvalidError:
-            return '[❎]'
+            return '[❎]', 'invalid'
         except errors.rpcerrorlist.PhoneNumberFloodError:
-            return '[limited]'
+            return '[limited]', 'limit'
         except errors.rpcerrorlist.FloodWaitError:
-            return '[limit]'
+            return '[limit]', 'limit'
         except asyncio.TimeoutError:
-            return '[timeouted]'
+            return '[timeouted]', 'timeout'
         except Exception as error:
-            return '[❓]'
+            return '[❓]', 'unknow'
         
         finally:
             await self.client.disconnect()

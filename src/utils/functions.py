@@ -5834,9 +5834,11 @@ async def check_number(number: str, index: int) -> str:
     async with semaphore:
         try:
             logger.info(f'[check_number] -> Checking Number {index}: {number}')
+            
             status = await Telegram(phone_number=number, method='code_request').check()
             flag = get_country_flag(number)
-            return f'{index}) {flag} {number} {status}' if flag else f'{index}) ❌ {number} {status}'
+            
+            return f'{index}) {flag} {number} {status[0]}' if flag else f'{index}) ❌ {number} {status[0]}'
         except Exception as error:
             logger.error(f'[check_number] -> Error: {error} - Number {index}: {number}')
             return f'{index}) ❌ Failed {number}'

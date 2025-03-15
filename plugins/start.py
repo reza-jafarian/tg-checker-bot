@@ -5,7 +5,7 @@ from src.database.models import User
 from src.config.config import TEXTS
 
 async def init(bot):
-    @bot.on(events.NewMessage(pattern=r'^([\/\#\!\.]start)$', func=lambda e: e.is_private))
+    @bot.on(events.NewMessage(pattern=r'^([\/\#\!\.]start|🔙 back)$', func=lambda e: e.is_private))
     async def start(event):
         user = await event.get_sender()
         
