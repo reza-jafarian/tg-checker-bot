@@ -21,15 +21,16 @@ def get_country_flag(number: str) -> Union[str, bool]:
         logger.error(f'[get_country_flag] -> Error: Phone number invalid! -> {error}')
         return False
 
-async def check_number(number: str) -> str:
+async def check_number(number: str, index: int) -> str:
     async with semaphore:
         try:
+            logger.info(f'[check_number] -> Checking Number {index}: {number}')
             status = await Telegram(phone_number=number, method='code_request').check()
             flag = get_country_flag(number)
-            return f'{flag} {number} {status}' if flag else f'❌ {number} {status}'
+            return f'{index}) {flag} {number} {status}' if flag else f'{index}) ❌ {number} {status}'
         except Exception as error:
-            logger.error(f'[check_number] -> Error: {error} - Number: {number}')
-            return f'❌ Failed {number}'
+            logger.error(f'[check_number] -> Error: {error} - Number {index}: {number}')
+            return f'{index}) ❌ Failed {number}'
 
 async def check_numbers(event, user_id, numbers, checked_numbers):
     try:
@@ -40,13 +41,13 @@ async def check_numbers(event, user_id, numbers, checked_numbers):
 
         results = []
         batch_tasks = []
-        
+
         async def process_batch():
             nonlocal batch_tasks
             checked_batch = await asyncio.gather(*batch_tasks)
             results.extend(checked_batch)
             batch_tasks = []
-            response = TEXTS['checked_result'][user_data.language].format('\n'.join(checked_batch))
+            response = TEXTS['checked_result'][user_data.language].format('\n'.join(checked_batch), TEXTS['checking_more_numbers'][user_data.language])
 
             if len(results) <= BATCH_SIZE:
                 await checked_numbers.edit(response)
@@ -54,7 +55,7 @@ async def check_numbers(event, user_id, numbers, checked_numbers):
                 await event.respond(response)
 
         for index, number in enumerate(numbers, start=1):
-            batch_tasks.append(check_number(number))
+            batch_tasks.append(check_number(number, index))
 
             if len(batch_tasks) == BATCH_SIZE:
                 await process_batch()

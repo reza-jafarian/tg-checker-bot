@@ -21,11 +21,6 @@ async def init(bot):
         checked_numbers = await event.reply(TEXTS['checked_numbers'][user_data.language]) 
         
         await check_numbers(event=event, user_id=user.id, numbers=numbers, checked_numbers=checked_numbers)
-        
-        # if response:
-        #     await checked_numbers.edit(TEXTS['checked_result'][user_data.language].format(response))
-        # else:
-        #     await checked_numbers.edit(TEXTS['error'][user_data.language])
     
     @bot.on(events.NewMessage(func=lambda e: e.is_private and e.file))
     async def receive_numbers_texts(event):
@@ -46,7 +41,3 @@ async def init(bot):
         
         await check_numbers(event=event, user_id=user.id, numbers=numbers, checked_numbers=checked_numbers)
         
-        # if response:
-        #     await checked_numbers.edit(TEXTS['checked_result'][user_data.language].format(response))
-        # else:
-        #     await checked_numbers.edit(TEXTS['error'][user_data.language])

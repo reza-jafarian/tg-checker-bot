@@ -1,6 +1,7 @@
 from telethon import TelegramClient, errors
 from telethon.sessions import StringSession
 import telethon.tl.types.auth as auth
+import asyncio
 
 class Telegram:
     def __init__(self, phone_number: str, method='code_request'):
@@ -20,7 +21,8 @@ class Telegram:
     
     async def check(self):
         try:
-            await self.client.connect()
+            # await self.client.connect()
+            await asyncio.wait_for(self.client.connect(), timeout=5.0)
             response = await self.client.send_code_request(phone=self.phone_number)
             
             if isinstance(response.type, auth.SentCodeTypeSetUpEmailRequired):
@@ -44,6 +46,8 @@ class Telegram:
             return '[limited]'
         except errors.rpcerrorlist.FloodWaitError:
             return '[limit]'
+        except asyncio.TimeoutError:
+            return '[timeouted]'
         except Exception as error:
             return '[❓]'
         
