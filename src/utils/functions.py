@@ -32,7 +32,7 @@ async def check_number(number: str, index: int) -> str:
             logger.error(f'[check_number] -> Error: {error} - Number {index}: {number}')
             return f'{index}) ❌ Failed {number}'
 
-async def check_numbers(event, user_id, numbers, checked_numbers):
+async def check_numbers(event, user_id, numbers, checked_numbers, is_file=False):
     try:
         user_data, _ = User.get_or_create(user_id=user_id)
 
@@ -42,12 +42,16 @@ async def check_numbers(event, user_id, numbers, checked_numbers):
         results = []
         batch_tasks = []
 
-        async def process_batch():
+        async def process_batch(last_batch=False):
             nonlocal batch_tasks
             checked_batch = await asyncio.gather(*batch_tasks)
             results.extend(checked_batch)
             batch_tasks = []
-            response = TEXTS['checked_result'][user_data.language].format('\n'.join(checked_batch), TEXTS['checking_more_numbers'][user_data.language])
+            
+            if last_batch:
+                response = TEXTS['checked_result'][user_data.language].format('\n'.join(checked_batch), TEXTS['done'][user_data.language])
+            else:
+                response = TEXTS['checked_result'][user_data.language].format('\n'.join(checked_batch), TEXTS['checking_more_numbers'][user_data.language])
 
             if len(results) <= BATCH_SIZE:
                 await checked_numbers.edit(response)
@@ -58,13 +62,17 @@ async def check_numbers(event, user_id, numbers, checked_numbers):
             batch_tasks.append(check_number(number, index))
 
             if len(batch_tasks) == BATCH_SIZE:
-                await process_batch()
+                remaining_numbers = len(numbers) - (index + 1)
+                last_batch = remaining_numbers <= 0
+                await process_batch(last_batch=last_batch)
 
             elif len(numbers) <= BATCH_SIZE and index % UPDATE_INTERVAL == 0:
-                await process_batch()
+                remaining_numbers = len(numbers) - (index + 1)
+                last_batch = remaining_numbers <= 0
+                await process_batch(last_batch=last_batch)
 
         if batch_tasks:
-            await process_batch()
+            await process_batch(last_batch=True)
 
     except Exception as error:
         logger.error(f'[check_numbers] -> Error: {error}')

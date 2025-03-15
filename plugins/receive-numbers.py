@@ -7,20 +7,21 @@ from src.config.config import TEXTS
 from src.utils.functions import check_numbers
 
 async def init(bot):
-    @bot.on(events.NewMessage(pattern=r'\+?\b\d{6,15}\b', func=lambda e: e.is_private))
+    @bot.on(events.NewMessage(func=lambda e: e.is_private))
     async def receive_numbers_texts(event):
         user = await event.get_sender()
         user_data, _ = User.get_or_create(user_id=user.id)
         
-        processing = await event.reply(TEXTS['processing_1'][user_data.language])
-        
-        numbers = re.findall(r'(?<![\w/:])\+?\d+(?![\w/:])', event.raw_text)
+        numbers = re.findall(r'(?<![\w/:])\+?\d{6,15}(?![\w/:])', event.raw_text)
         numbers = list(set(map(lambda x: '+' + x if not x.startswith('+') else x, numbers)))
         
-        await processing.edit(str(TEXTS['processing_2'][user_data.language]).format(len(numbers)))
-        checked_numbers = await event.reply(TEXTS['checked_numbers'][user_data.language]) 
-        
-        await check_numbers(event=event, user_id=user.id, numbers=numbers, checked_numbers=checked_numbers)
+        if len(numbers) > 0:
+            processing = await event.reply(TEXTS['processing_1'][user_data.language])
+            
+            await processing.edit(str(TEXTS['processing_2'][user_data.language]).format(len(numbers)))
+            checked_numbers = await event.reply(TEXTS['checked_numbers'][user_data.language]) 
+            
+            await check_numbers(event=event, user_id=user.id, numbers=numbers, checked_numbers=checked_numbers)
     
     @bot.on(events.NewMessage(func=lambda e: e.is_private and e.file))
     async def receive_numbers_texts(event):
