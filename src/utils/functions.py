@@ -1,8 +1,10 @@
+import traceback
 from typing import Union
 import phonenumbers
 import asyncio
 import random
 import re
+import os
 
 from dateutil.relativedelta import relativedelta
 from datetime import datetime, timedelta
@@ -11,11 +13,75 @@ from src.telegram.telegram import Telegram
 from src.database.models import User
 from src.config.config import TEXTS
 from src.utils.logger import logger
+from src.telegram.client import getClient
 
 SEMAPHORE_LIMIT = 10
 BATCH_SIZE = 100
 UPDATE_INTERVAL = 20
 semaphore = asyncio.Semaphore(SEMAPHORE_LIMIT)
+
+def add_time_to_now(time_str: str) -> str:
+    now = datetime.now()
+    time_units = {
+        "second": "seconds",
+        "seconds": "seconds",
+        "minute": "minutes",
+        "minutes": "minutes",
+        "hour": "hours",
+        "hours": "hours",
+        "day": "days",
+        "days": "days",
+        "week": "weeks",
+        "weeks": "weeks",
+        "month": "months",
+        "months": "months",
+        "year": "years",
+        "years": "years",
+    }
+    
+    matches = re.findall(r"(\d+)\s*(\w+)", time_str)
+    
+    delta = timedelta()
+    rdelta = relativedelta()
+
+    for amount, unit in matches:
+        amount = int(amount)
+        unit = unit.lower()
+        
+        if unit in ['month', 'months', 'year', 'years']:
+            rdelta += relativedelta(**{time_units[unit]: amount})
+        elif unit in time_units:
+            delta += timedelta(**{time_units[unit]: amount})
+
+    return now + delta + rdelta
+
+def remaining_profile_subs(timestamp: int) -> Union[str, int]:
+    input_time = datetime.fromtimestamp(timestamp)
+    remaining_seconds = (input_time - datetime.now()).total_seconds()
+
+    if remaining_seconds <= 0:
+        return 0
+
+    remaining_days = int(remaining_seconds // (24 * 3600))
+    remaining_seconds %= (24 * 3600)
+
+    hours = int(remaining_seconds // 3600)
+    remaining_seconds %= 3600
+
+    minutes = int(remaining_seconds // 60)
+    seconds = int(remaining_seconds % 60)
+
+    time_string = []
+    if remaining_days > 0:
+        time_string.append(f'{remaining_days} روز')
+    if hours > 0:
+        time_string.append(f'{hours} ساعت')
+    if minutes > 0:
+        time_string.append(f'{minutes} دقیقه')
+    if seconds > 0 or not time_string:
+        time_string.append(f'{seconds} ثانیه')
+
+    return ' و '.join(time_string)
 
 def get_random_app_version(platform: str = 'desktop') -> str:
     if platform == 'desktop':
@@ -5827,99 +5893,152 @@ def get_country_flag(number: str) -> Union[str, bool]:
         country_code = phonenumbers.region_code_for_number(parsed_number)
         return ''.join(chr(ord(letter) % 32 + 0x1F1E5) for letter in country_code)
     except Exception as error:
-        logger.error(f'[get_country_flag] -> Error: Phone number invalid! -> {error}')
+        logger.error(f'[get_country_flag] -> Error: Phone number invalid!')
         return False
 
-async def check_number(number: str, index: int) -> str:
+def get_caption(status: str, language: str = 'fa') -> str:
+    if status == 'register':
+        return 'شماره های خام'
+    elif status == 'session':
+        return 'شماره های سشن دار'
+    elif status == 'ban':
+        return 'شماره های بن شده'
+    elif status == 'limit':
+        return 'شماره های محدود شده'
+    elif status == 'invalid':
+        return 'شماره های نامعتبر'
+    elif status == 'timeout':
+        return 'شماره های تایم اوت شده'
+    elif status == 'unknow':
+        return 'شماره های نامشخص / دیگر'
+    elif status == 'failed':
+        return 'شماره های ناموفق'
+    else:
+        return 'نامشخص ( خطا در ربات )'
+
+async def check_number(user_id: Union[int, str], numbers: list, number: str, index: int, live_status: dict, checked_numbers) -> Union[str, tuple]:
     async with semaphore:
         try:
-            logger.info(f'[check_number] -> Checking Number {index}: {number}')
-            
+            user_data, _ = User.get_or_create(user_id=user_id)
             status = await Telegram(phone_number=number, method='code_request').check()
             flag = get_country_flag(number)
             
-            return f'{index}) {flag} {number} {status[0]}' if flag else f'{index}) ❌ {number} {status[0]}'
+            logger.info(f'[<yellow>check_number</yellow>] -> Checking Number <red>{index}</red>: [{flag}] <green>{number}</green> -> <blue>{status[0]}</blue>')
+
+            if status[1] == 'register':
+                live_status['true_numbers'] += 1
+            elif status[1] == 'session':
+                live_status['has_session'] += 1
+            elif status[1] == 'ban':
+                live_status['ban_numbers'] += 1
+            elif status[1] == 'limit':
+                live_status['limit_numbers'] += 1
+            else:
+                live_status['other'] += 1
+            
+            if index % 2 == 0:
+                try:
+                    await checked_numbers.edit(str(TEXTS['checked_numbers'][user_data.language]) + '\n\n' + str(TEXTS['status_numbers'][user_data.language]).format(
+                        len(numbers),
+                        live_status['true_numbers'],
+                        live_status['has_session'],
+                        live_status['ban_numbers'],
+                        live_status['limit_numbers'],
+                        live_status['other']
+                    ))
+                except Exception:
+                    pass
+
+            return (f'{index}) {flag} {number} {status[0]}' if flag else f'{index}) ❌ {number} {status[0]}', status[1])
         except Exception as error:
             logger.error(f'[check_number] -> Error: {error} - Number {index}: {number}')
-            return f'{index}) ❌ Failed {number}'
+            return (f'{index}) ❌ Failed {number}', 'failed')
 
 async def check_numbers(event, user_id, numbers, checked_numbers, is_file=False):
     try:
         user_data, _ = User.get_or_create(user_id=user_id)
+        bot = await getClient()
 
         if not numbers:
             return await checked_numbers.edit(TEXTS['error'][user_data.language])
 
-        results = []
+        live_status = {'total_numbers': len(numbers), 'true_numbers': 0, 'has_session': 0, 'ban_numbers': 0, 'limit_numbers': 0, 'other': 0}
+        results = set()
         batch_tasks = []
 
         async def process_batch(last_batch=False):
             nonlocal batch_tasks
             checked_batch = await asyncio.gather(*batch_tasks)
-            results.extend(checked_batch)
+
+            for result_tuple in checked_batch:
+                if isinstance(result_tuple, tuple) and len(result_tuple) == 2:
+                    result, status = result_tuple
+                    if result not in results:
+                        results.add((result, status))
+
             batch_tasks = []
-            
-            if last_batch:
-                response = TEXTS['checked_result'][user_data.language].format('\n'.join(checked_batch), TEXTS['done'][user_data.language])
-            else:
-                response = TEXTS['checked_result'][user_data.language].format('\n'.join(checked_batch), TEXTS['checking_more_numbers'][user_data.language])
 
-            if len(results) <= BATCH_SIZE:
-                await checked_numbers.edit(response)
-            else:
-                await event.respond(response)
+            sorted_results = sorted(results, key=lambda x: int(x[0].split(")")[0]))
 
-        for index, number in enumerate(numbers, start=1):
-            batch_tasks.append(check_number(number, index))
+            if is_file:
+                file_data = {}
+                for result, status in sorted_results:
+                    number = result.split(' ')[2]
+                    file_data.setdefault(status, []).append(number)
+
+                for status, numbers in file_data.items():
+                    file_name = f'{status}_{user_id}.txt'
+                    with open(file_name, 'w', encoding='utf-8') as file:
+                        file.write('\n'.join(numbers) + '\n')
+
+            else:
+                checked_texts = "\n".join([r for r, _ in sorted_results])
+                if last_batch:
+                    response = TEXTS['checked_result'][user_data.language].format(checked_texts, TEXTS['done'][user_data.language])
+                else:
+                    response = TEXTS['checked_result'][user_data.language].format(checked_texts, TEXTS['checking_more_numbers'][user_data.language])
+
+                if len(results) <= BATCH_SIZE:
+                    await checked_numbers.edit(response)
+                else:
+                    await event.respond(response)
+
+        unique_numbers = list(set(numbers))
+        checked_count = 0
+
+        for index, number in enumerate(unique_numbers, start=1):
+            # Pass live_status to check_number
+            batch_tasks.append(check_number(user_id, numbers, number, index, live_status, checked_numbers))
 
             if len(batch_tasks) == BATCH_SIZE:
-                remaining_numbers = len(numbers) - (index + 1)
+                remaining_numbers = len(unique_numbers) - (index + 1)
                 last_batch = remaining_numbers <= 0
                 await process_batch(last_batch=last_batch)
 
-            elif len(numbers) <= BATCH_SIZE and index % UPDATE_INTERVAL == 0:
-                remaining_numbers = len(numbers) - (index + 1)
+            elif len(unique_numbers) <= BATCH_SIZE and index % UPDATE_INTERVAL == 0:
+                remaining_numbers = len(unique_numbers) - (index + 1)
                 last_batch = remaining_numbers <= 0
                 await process_batch(last_batch=last_batch)
 
         if batch_tasks:
             await process_batch(last_batch=True)
 
+        if is_file:
+            unique_statuses = set(status for _, status in results)
+
+            for status in unique_statuses:
+                file_name = f'{status}_{user_id}.txt'
+                caption = '<b>' + get_caption(status, user_data.language) + '</b>'
+                
+                if os.path.exists(file_name) and os.path.getsize(file_name) > 0:
+                    await bot.send_file(entity=user_id, file=file_name, caption=caption)
+                    os.unlink(file_name)
+
     except Exception as error:
         logger.error(f'[check_numbers] -> Error: {error}')
-        await checked_numbers.edit(TEXTS['error'][user_data.language])
-
-def add_time_to_now(time_str: str) -> str:
-    now = datetime.now()
-    time_units = {
-        "second": "seconds",
-        "seconds": "seconds",
-        "minute": "minutes",
-        "minutes": "minutes",
-        "hour": "hours",
-        "hours": "hours",
-        "day": "days",
-        "days": "days",
-        "week": "weeks",
-        "weeks": "weeks",
-        "month": "months",
-        "months": "months",
-        "year": "years",
-        "years": "years",
-    }
-    
-    matches = re.findall(r"(\d+)\s*(\w+)", time_str)
-    
-    delta = timedelta()
-    rdelta = relativedelta()
-
-    for amount, unit in matches:
-        amount = int(amount)
-        unit = unit.lower()
+        traceback.print_exc()
         
-        if unit in ['month', 'months', 'year', 'years']:
-            rdelta += relativedelta(**{time_units[unit]: amount})
-        elif unit in time_units:
-            delta += timedelta(**{time_units[unit]: amount})
-
-    return now + delta + rdelta
+        try:
+            await checked_numbers.edit(TEXTS['error'][user_data.language])
+        except Exception:
+            await event.respond(TEXTS['error'][user_data.language])

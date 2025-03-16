@@ -1,5 +1,4 @@
 from telethon import events
-from datetime import datetime
 
 from src.utils.keyboards import admin_panel_key, back_to_admin_panel_key, select_ready_date
 from src.utils.functions import add_time_to_now
@@ -12,13 +11,13 @@ async def init(bot):
         user = await event.get_sender()
         user_data, _ = User.get_or_create(user_id=user.id)
         
-        if event.raw_text in ['/panel', '/admin', 'amin', 'panel', '🔙 back to admin']:
+        if event.raw_text in ['/panel', '/admin', '🔙 back to admin']:
             User.update(step='none').where(User.user_id == user.id).execute()
-            await event.reply('<b>🤙 Hey dude, your welcome!</b>', buttons = admin_panel_key())
+            await event.reply('<b>🤙 Hello admin</b>', buttons = admin_panel_key())
         
-        elif event.raw_text == '📊 Bot stat':
+        elif event.raw_text == '📊 Stat':
             User.update(step='none').where(User.user_id == user.id).execute()
-            await event.reply(f'<b>📊 Bot stat:\n\n👤 Persons: {User.select().count()}</b>', buttons = admin_panel_key())
+            await event.reply(f'<b>👤 Count user: {User.select().count()}</b>', buttons = admin_panel_key())
         
         elif event.raw_text == '🟢 Open user':
             User.update(step='open_user').where(User.user_id == user.id).execute()

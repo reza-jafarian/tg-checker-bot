@@ -27,13 +27,19 @@ class BaseModel(peewee.Model):
 
 
 class User(BaseModel):
+    DALY_FREE_CHECK = 5 # Daily free check: 50
+    TEST_TIME = 86400 # 1 day
+    
     user_id = peewee.BigIntegerField(unique=True)
     step = peewee.CharField(max_length=255, default='none') # default: none
     language = peewee.CharField(max_length=5, default='fa') # default: English
     account_status = peewee.BooleanField(default=True) # default: Active (Free)
-    free_check = peewee.BigIntegerField(default=5) # default: 5
-    datetime_joined = peewee.DateTimeField(default=datetime.datetime.now)
-    datetime_subscription = peewee.DateTimeField(default=lambda: datetime.datetime.now() + datetime.timedelta(days=0))
+    is_tested = peewee.BooleanField(default=False) # default: Not tested
+    usdt_balance = peewee.FloatField(default=0.0) # default: 0.0
+    toman_balance = peewee.BigIntegerField(default=0) # default: 0
+    free_check = peewee.BigIntegerField(default=DALY_FREE_CHECK) # Daly free check: 50
+    datetime_joined = peewee.DateTimeField(default=datetime.datetime.now) # default: now
+    datetime_subscription = peewee.BigIntegerField(default=0) # default: 0
 
 
 db.connect()

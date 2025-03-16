@@ -2,8 +2,9 @@ from telethon import Button
 
 def start_key() -> list:
     return [
-        [Button.text('اطلاعات حساب', resize = True)],
-        [Button.text('راهنما')]
+        [Button.text('🆓 تست رایگان', resize = True)],
+        [Button.text('💸 افزایش موجودی'), Button.text('👤 حساب کاربری', resize = True)],
+        [Button.text('📚 راهنمای ربات')]
     ]
 
 def admin_panel_key() -> list:
