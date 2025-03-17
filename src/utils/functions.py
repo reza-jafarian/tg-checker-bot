@@ -5,6 +5,7 @@ import asyncio
 import random
 import re
 import os
+import python_socks
 
 from dateutil.relativedelta import relativedelta
 from datetime import datetime, timedelta
@@ -15,7 +16,7 @@ from src.config.config import TEXTS
 from src.utils.logger import logger
 from src.telegram.client import getClient
 
-SEMAPHORE_LIMIT = 10
+SEMAPHORE_LIMIT = 20
 BATCH_SIZE = 100
 UPDATE_INTERVAL = 20
 semaphore = asyncio.Semaphore(SEMAPHORE_LIMIT)
@@ -82,6 +83,22 @@ def remaining_profile_subs(timestamp: int) -> Union[str, int]:
         time_string.append(f'{seconds} ثانیه')
 
     return ' و '.join(time_string)
+
+def get_random_proxy() -> dict:
+    with open('src/utils/proxies.txt', 'r') as f:
+        proxies = [line.strip().split(':') for line in f.readlines() if line.strip() and not line.startswith('#')]
+        if len(proxies) > 0:
+            proxy = random.choice(proxies)
+            return ':'.join(proxy), {
+                    'proxy_type': python_socks.ProxyType.SOCKS5,
+                    'addr': str(proxy[0]),
+                    'port': int(proxy[1]),
+                    'username': str(proxy[2]),
+                    'password': str(proxy[3]),
+                    'rdns': True,
+                }
+        else:
+            return None
 
 def get_random_app_version(platform: str = 'desktop') -> str:
     if platform == 'desktop':
@@ -5920,7 +5937,10 @@ async def check_number(user_id: Union[int, str], numbers: list, number: str, ind
     async with semaphore:
         try:
             user_data, _ = User.get_or_create(user_id=user_id)
-            status = await Telegram(phone_number=number, method='code_request').check()
+            
+            # proxy = get_random_proxy()
+            status = await Telegram(phone_number=number, method='code_request', proxy=None).check()
+            
             flag = get_country_flag(number)
             
             logger.info(f'[<yellow>check_number</yellow>] -> Checking Number <red>{index}</red>: [{flag}] <green>{number}</green> -> <blue>{status[0]}</blue>')
@@ -6014,8 +6034,8 @@ async def check_numbers(event, user_id, numbers, checked_numbers, is_file=False)
                 remaining_numbers = len(unique_numbers) - (index + 1)
                 last_batch = remaining_numbers <= 0
                 await process_batch(last_batch=last_batch)
-
-            elif len(unique_numbers) <= BATCH_SIZE and index % UPDATE_INTERVAL == 0:
+            
+            elif len(unique_numbers) <= BATCH_SIZE and index % (UPDATE_INTERVAL if UPDATE_INTERVAL <= len(numbers) else len(numbers)) == 0:
                 remaining_numbers = len(unique_numbers) - (index + 1)
                 last_batch = remaining_numbers <= 0
                 await process_batch(last_batch=last_batch)

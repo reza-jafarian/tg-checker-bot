@@ -23,7 +23,7 @@ async def init(bot):
                 processing = await event.reply(TEXTS['processing_1'][user_data.language])
                 
                 await processing.edit(str(TEXTS['processing_2'][user_data.language]).format(len(numbers)))
-                checked_numbers = await event.reply(TEXTS['checked_numbers'][user_data.language]) 
+                checked_numbers = await event.reply(TEXTS['checked_numbers'][user_data.language] + '\n\n' + TEXTS['status_numbers'][user_data.language].format(len(numbers), 0, 0, 0, 0, 0))
                 
                 # if user_data.datetime_subscription == 0 or user_data.datetime_subscription < datetime.datetime.now().timestamp():
                 #     User.update(free_check=user_data.free_check - len(numbers)).where(User.user_id == user.id).execute()
@@ -34,7 +34,7 @@ async def init(bot):
                 processing = await event.reply(TEXTS['processing_1'][user_data.language])
                 
                 await processing.edit(str(TEXTS['processing_2'][user_data.language]).format(len(numbers)))
-                checked_numbers = await event.reply(TEXTS['checked_numbers'][user_data.language]) 
+                checked_numbers = await event.reply(TEXTS['checked_numbers'][user_data.language] + '\n\n' + TEXTS['status_numbers'][user_data.language].format(len(numbers), 0, 0, 0, 0, 0))
                 
                 await check_numbers(event=event, user_id=user.id, numbers=numbers, checked_numbers=checked_numbers)
             
