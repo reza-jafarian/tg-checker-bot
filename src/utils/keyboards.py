@@ -9,7 +9,7 @@ def start_key() -> list:
 
 def admin_panel_key() -> list:
     return [
-        [Button.text('📊 Bot stat', resize = True)],
+        [Button.text('📊 Stat', resize = True)],
         [Button.text('🟢 Open user'), Button.text('🔴 Close user')],
         [Button.text('🔙 back')]
     ]

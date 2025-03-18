@@ -1,4 +1,5 @@
 from telethon import events
+import glob
 
 from src.utils.keyboards import admin_panel_key, back_to_admin_panel_key, select_ready_date
 from src.utils.functions import add_time_to_now
@@ -15,6 +16,10 @@ async def init(bot):
             User.update(step='none').where(User.user_id == user.id).execute()
             await event.reply('<b>🤙 Hello admin</b>', buttons = admin_panel_key())
         
+        elif event.raw_text == '/count_accounts':
+            count = len(glob.glob('sessions/*.session'))
+            await event.reply(f'<b>📞 Count all accounts in bot: <code>{count}</code>')
+        
         elif event.raw_text == '/now_mode':
             await event.reply(f'<b>💬 Now mode is: <code>{Setting.select().first().check_type}</code></b>')
         
@@ -28,7 +33,8 @@ async def init(bot):
         
         elif event.raw_text == '📊 Stat':
             User.update(step='none').where(User.user_id == user.id).execute()
-            await event.reply(f'<b>👤 Count user: {User.select().count()}</b>', buttons = admin_panel_key())
+            count = len(glob.glob('sessions/*.session'))
+            await event.reply(f'<b>👤 Count user: <code>{User.select().count()}</code>\n📞 Count all accounts in bot: <code>{count}</code>\n✏️ Check type: <code>{Setting.select().first().check_type}</code></b>', buttons = admin_panel_key())
         
         elif event.raw_text == '🟢 Open user':
             User.update(step='open_user').where(User.user_id == user.id).execute()
