@@ -101,6 +101,7 @@ def save_used_sessions(user_id, used_sessions):
 
 def get_random_session(user_id):
     all_sessions = glob.glob('sessions/*.session')
+    random.shuffle(all_sessions)
     if not all_sessions:
         raise FileNotFoundError("No session files found.")
 
