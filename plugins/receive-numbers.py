@@ -1,10 +1,9 @@
 from telethon import events
 import datetime, re, os
 
-from src.utils.keyboards import start_key
+from src.utils.functions import check_numbers
 from src.database.models import User
 from src.config.config import TEXTS
-from src.utils.functions import check_numbers
 
 async def init(bot):
     @bot.on(events.NewMessage(func=lambda e: e.is_private))
@@ -12,7 +11,8 @@ async def init(bot):
         user = await event.get_sender()
         user_data, _ = User.get_or_create(user_id=user.id)
         
-        numbers = re.findall(r'(?<![\w/:])\+?\d{6,15}(?![\w/:])', event.raw_text)
+        # numbers = re.findall(r'(?<![\w/:])\+?\d{6,15}(?![\w/:])', event.raw_text)
+        numbers = [re.sub(r'\D', '', match) for match in re.findall(r'\+?\d{1,4}[\s\-]?\d{6,15}', event.raw_text)]
         numbers = list(set(map(lambda x: '+' + x if not x.startswith('+') else x, numbers)))
         
         if len(numbers) > 0:
@@ -23,7 +23,7 @@ async def init(bot):
                 processing = await event.reply(TEXTS['processing_1'][user_data.language])
                 
                 await processing.edit(str(TEXTS['processing_2'][user_data.language]).format(len(numbers)))
-                checked_numbers = await event.reply(TEXTS['checked_numbers'][user_data.language] + '\n\n' + TEXTS['status_numbers'][user_data.language].format(len(numbers), 0, 0, 0, 0, 0))
+                checked_numbers = await event.reply(TEXTS['checked_numbers'][user_data.language])
                 
                 # if user_data.datetime_subscription == 0 or user_data.datetime_subscription < datetime.datetime.now().timestamp():
                 #     User.update(free_check=user_data.free_check - len(numbers)).where(User.user_id == user.id).execute()
@@ -34,7 +34,7 @@ async def init(bot):
                 processing = await event.reply(TEXTS['processing_1'][user_data.language])
                 
                 await processing.edit(str(TEXTS['processing_2'][user_data.language]).format(len(numbers)))
-                checked_numbers = await event.reply(TEXTS['checked_numbers'][user_data.language] + '\n\n' + TEXTS['status_numbers'][user_data.language].format(len(numbers), 0, 0, 0, 0, 0))
+                checked_numbers = await event.reply(TEXTS['checked_numbers'][user_data.language])
                 
                 await check_numbers(event=event, user_id=user.id, numbers=numbers, checked_numbers=checked_numbers)
             
@@ -55,9 +55,13 @@ async def init(bot):
         processing = await event.reply(TEXTS['processing_1'][user_data.language])
         
         await event.download_media(file_name)
-        with open(file_name, 'r') as file:
-            numbers = re.findall(r'(?<![\w/:])\+?\d+(?![\w/:])', file.read())
-            numbers = list(set(map(lambda x: '+' + x if not x.startswith('+') else x, numbers)))
+        with open(file_name, 'r', encoding='utf-8') as file:
+            content = file.read()
+        if 'http' in content:
+            numbers = content.split('\n')
+        else:
+            numbers = re.findall(r'(?<![\w/:])\+?\d+(?![\w/:])', content)
+            numbers = list(set('+' + x if not x.startswith('+') else x for x in numbers))
         os.unlink(file_name)
         
         if len(numbers) > 0:
@@ -74,5 +78,3 @@ async def init(bot):
             else:
                 await processing.delete()
                 await event.reply(TEXTS['not_have_subs'][user_data.language])
-        
-        

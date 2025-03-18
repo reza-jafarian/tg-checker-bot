@@ -2,7 +2,7 @@ from telethon import events
 
 from src.utils.keyboards import admin_panel_key, back_to_admin_panel_key, select_ready_date
 from src.utils.functions import add_time_to_now
-from src.database.models import User, redis_db
+from src.database.models import User, Setting, redis_db
 from src.config.config import SETTINGS
 
 async def init(bot):
@@ -14,6 +14,17 @@ async def init(bot):
         if event.raw_text in ['/panel', '/admin', '🔙 back to admin']:
             User.update(step='none').where(User.user_id == user.id).execute()
             await event.reply('<b>🤙 Hello admin</b>', buttons = admin_panel_key())
+        
+        elif event.raw_text == '/now_mode':
+            await event.reply(f'<b>💬 Now mode is: <code>{Setting.select().first().check_type}</code></b>')
+        
+        elif event.raw_text == '/change_mode':
+            if Setting.select().first().check_type == 'code_request':
+                Setting.update(check_type='change_number_request').execute()
+                await event.reply('✅ Done, replaced to: <code>change_number_request</code>')
+            elif Setting.select().first().check_type == 'change_number_request':
+                Setting.update(check_type='code_request').execute()
+                await event.reply('✅ Done, replaced to: <code>code_request</code>')
         
         elif event.raw_text == '📊 Stat':
             User.update(step='none').where(User.user_id == user.id).execute()

@@ -42,5 +42,15 @@ class User(BaseModel):
     datetime_subscription = peewee.BigIntegerField(default=0) # default: 0
 
 
+class Setting(BaseModel):
+    bot_status = peewee.BooleanField(default=True) # default: Active
+    check_status = peewee.BooleanField(default=True) # default: Active
+    test_status = peewee.BooleanField(default=True) # default: Active
+    check_type = peewee.CharField(max_length=50, default='code_request') # default = 'code_request' | Methods -> [code_request, change_number_request]
+
+
 db.connect()
-db.create_tables([User])
+db.create_tables(models=[User, Setting])
+
+if Setting.select().count() == 0:
+    Setting.create()

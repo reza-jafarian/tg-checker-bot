@@ -1,20 +1,24 @@
-import traceback
+from aioprocessing import AioProcess, AioQueue
 from typing import Union
+from pathlib import Path
 import phonenumbers
+import python_socks
+import traceback
 import asyncio
 import random
+import json
+import glob
 import re
 import os
-import python_socks
 
 from dateutil.relativedelta import relativedelta
 from datetime import datetime, timedelta
 
+from src.database.models import User, Setting, redis_db
 from src.telegram.telegram import Telegram
-from src.database.models import User
+from src.telegram.client import getClient
 from src.config.config import TEXTS
 from src.utils.logger import logger
-from src.telegram.client import getClient
 
 SEMAPHORE_LIMIT = 20
 BATCH_SIZE = 100
@@ -83,6 +87,49 @@ def remaining_profile_subs(timestamp: int) -> Union[str, int]:
         time_string.append(f'{seconds} ثانیه')
 
     return ' و '.join(time_string)
+
+# ------------------------------------------------------- #
+
+def load_used_sessions(user_id):
+    used_sessions = redis_db.get(f'used_sessions:{user_id}')
+    if used_sessions:
+        return json.loads(used_sessions)
+    return {}
+
+def save_used_sessions(user_id, used_sessions):
+    redis_db.set(f'used_sessions:{user_id}', json.dumps(used_sessions))
+
+def get_random_session(user_id):
+    all_sessions = glob.glob('sessions/*.session')
+    if not all_sessions:
+        raise FileNotFoundError("No session files found.")
+
+    used_sessions = load_used_sessions(user_id)
+    
+    session_usage = {Path(s).stem: used_sessions.get(Path(s).stem, 0) for s in all_sessions}
+
+    min_usage = min(session_usage.values(), default=0)
+    least_used_sessions = [s for s, usage in session_usage.items() if usage == min_usage]
+
+    selected_session = random.choice(least_used_sessions)
+
+    used_sessions[selected_session] = used_sessions.get(selected_session, 0) + 1
+    save_used_sessions(user_id, used_sessions)
+
+    return selected_session
+
+def load_session_data(session_name):
+    with open(f'sessions/{session_name}.json', 'r') as f:
+        return json.load(f)
+
+# ------------------------------------------------------- #
+
+def convert_timezone(timezone: str) -> int:
+    if timezone:
+        sign = 1 if '+' in timezone else -1
+        hours, _, minutes = timezone.lstrip('+-').partition(':')
+        return sign * (int(hours) * 3600 + int(minutes or 0) * 60)
+    return 0
 
 def get_random_proxy() -> dict:
     with open('src/utils/proxies.txt', 'r') as f:
@@ -5913,6 +5960,8 @@ def get_country_flag(number: str) -> Union[str, bool]:
         logger.error(f'[get_country_flag] -> Error: Phone number invalid!')
         return False
 
+# ------------------------------------------------------- #
+
 def get_caption(status: str, language: str = 'fa') -> str:
     if status == 'register':
         return 'شماره های خام'
@@ -5933,132 +5982,236 @@ def get_caption(status: str, language: str = 'fa') -> str:
     else:
         return 'نامشخص ( خطا در ربات )'
 
-async def check_number(user_id: Union[int, str], numbers: list, number: str, index: int, live_status: dict, checked_numbers) -> Union[str, tuple]:
-    async with semaphore:
-        try:
-            user_data, _ = User.get_or_create(user_id=user_id)
+# async def check_number(user_id: Union[int, str], numbers: list, number: str, index: int, live_status: dict, checked_numbers, is_file: bool = False) -> Union[str, tuple]:
+#     async with semaphore:
+#         try:
+#             user_data, _ = User.get_or_create(user_id=user_id)
             
-            # proxy = get_random_proxy()
-            status = await Telegram(phone_number=number, method='code_request', proxy=None).check()
+#             # proxy = get_random_proxy()
+#             status = await Telegram(phone_number=number, method='code_request', proxy=None).check()
             
-            flag = get_country_flag(number)
+#             flag = get_country_flag(number)
             
-            logger.info(f'[<yellow>check_number</yellow>] -> Checking Number <red>{index}</red>: [{flag}] <green>{number}</green> -> <blue>{status[0]}</blue>')
+#             logger.info(f'[<yellow>check_number</yellow>] -> Checking Number <red>{index}</red>: [{flag}] <green>{number}</green> -> <blue>{status[0]}</blue>')
 
-            if status[1] == 'register':
-                live_status['true_numbers'] += 1
-            elif status[1] == 'session':
-                live_status['has_session'] += 1
-            elif status[1] == 'ban':
-                live_status['ban_numbers'] += 1
-            elif status[1] == 'limit':
-                live_status['limit_numbers'] += 1
-            else:
-                live_status['other'] += 1
-            
-            if index % 2 == 0:
-                try:
-                    await checked_numbers.edit(str(TEXTS['checked_numbers'][user_data.language]) + '\n\n' + str(TEXTS['status_numbers'][user_data.language]).format(
-                        len(numbers),
-                        live_status['true_numbers'],
-                        live_status['has_session'],
-                        live_status['ban_numbers'],
-                        live_status['limit_numbers'],
-                        live_status['other']
-                    ))
-                except Exception:
-                    pass
+#             if is_file:
+#                 if status[1] == 'register':
+#                     live_status['true_numbers'] += 1
+#                 elif status[1] == 'session':
+#                     live_status['has_session'] += 1
+#                 elif status[1] == 'ban':
+#                     live_status['ban_numbers'] += 1
+#                 elif status[1] == 'limit':
+#                     live_status['limit_numbers'] += 1
+#                 else:
+#                     live_status['other'] += 1
+                
+#                 if index % 2 == 0:
+#                     try:
+#                         await checked_numbers.edit(str(TEXTS['checked_numbers'][user_data.language]) + '\n\n' + str(TEXTS['status_numbers'][user_data.language]).format(
+#                             len(numbers),
+#                             live_status['true_numbers'],
+#                             live_status['has_session'],
+#                             live_status['ban_numbers'],
+#                             live_status['limit_numbers'],
+#                             live_status['other']
+#                         ))
+#                     except Exception:
+#                         pass
 
-            return (f'{index}) {flag} {number} {status[0]}' if flag else f'{index}) ❌ {number} {status[0]}', status[1])
-        except Exception as error:
-            logger.error(f'[check_number] -> Error: {error} - Number {index}: {number}')
-            return (f'{index}) ❌ Failed {number}', 'failed')
+#             return (f'{index}) {flag} {number} {status[0]}' if flag else f'{index}) ❌ {number} {status[0]}', status[1])
+#         except Exception as error:
+#             logger.error(f'[check_number] -> Error: {error} - Number {index}: {number}')
+#             return (f'{index}) ❌ Failed {number}', 'failed')
+
+# async def check_numbers(event, user_id, numbers, checked_numbers, is_file=False):
+#     try:
+#         user_data, _ = User.get_or_create(user_id=user_id)
+#         bot = await getClient()
+
+#         if not numbers:
+#             return await checked_numbers.edit(TEXTS['error'][user_data.language])
+
+#         live_status = {'total_numbers': len(numbers), 'true_numbers': 0, 'has_session': 0, 'ban_numbers': 0, 'limit_numbers': 0, 'other': 0}
+#         results = set()
+#         batch_tasks = []
+
+#         async def process_batch(last_batch=False):
+#             nonlocal batch_tasks
+#             checked_batch = await asyncio.gather(*batch_tasks)
+
+#             for result_tuple in checked_batch:
+#                 if isinstance(result_tuple, tuple) and len(result_tuple) == 2:
+#                     result, status = result_tuple
+#                     if result not in results:
+#                         results.add((result, status))
+
+#             batch_tasks = []
+
+#             sorted_results = sorted(results, key=lambda x: int(x[0].split(")")[0]))
+
+#             if is_file:
+#                 file_data = {}
+#                 for result, status in sorted_results:
+#                     number = result.split(' ')[2]
+#                     file_data.setdefault(status, []).append(number)
+
+#                 for status, numbers in file_data.items():
+#                     file_name = f'{status}_{user_id}.txt'
+#                     with open(file_name, 'w', encoding='utf-8') as file:
+#                         file.write('\n'.join(numbers) + '\n')
+
+#             else:
+#                 checked_texts = "\n".join([r for r, _ in sorted_results])
+#                 if last_batch:
+#                     response = TEXTS['checked_result'][user_data.language].format(checked_texts, TEXTS['done'][user_data.language])
+#                 else:
+#                     response = TEXTS['checked_result'][user_data.language].format(checked_texts, TEXTS['checking_more_numbers'][user_data.language])
+
+#                 if len(results) <= BATCH_SIZE:
+#                     await checked_numbers.edit(response)
+#                 else:
+#                     await event.respond(response)
+
+#         # -------------------- #
+
+#         unique_numbers = list(set(numbers))
+#         for index, number in enumerate(unique_numbers, start=1):
+#             # Pass live_status to check_number
+#             batch_tasks.append(check_number(user_id, numbers, number, index, live_status, checked_numbers, is_file))
+            
+#             if len(batch_tasks) == BATCH_SIZE:
+#                 remaining_numbers = len(unique_numbers) - (index + 1)
+#                 last_batch = remaining_numbers <= 0
+#                 await process_batch(last_batch=last_batch)
+            
+#             elif len(unique_numbers) <= BATCH_SIZE and index % (UPDATE_INTERVAL if UPDATE_INTERVAL <= len(numbers) else len(numbers)) == 0:
+#                 remaining_numbers = len(unique_numbers) - (index + 1)
+#                 last_batch = remaining_numbers <= 0
+#                 await process_batch(last_batch=last_batch)
+
+#         if batch_tasks:
+#             await process_batch(last_batch=True)
+
+#         if is_file:
+#             unique_statuses = set(status for _, status in results)
+
+#             for status in unique_statuses:
+#                 file_name = f'{status}_{user_id}.txt'
+#                 caption = '<b>' + get_caption(status, user_data.language) + '</b>'
+                
+#                 if os.path.exists(file_name) and os.path.getsize(file_name) > 0:
+#                     await bot.send_file(entity=user_id, file=file_name, caption=caption)
+#                     os.unlink(file_name)
+
+#     except Exception as error:
+#         logger.error(f'[check_numbers] -> Error: {error}')
+#         traceback.print_exc()
+        
+#         try:
+#             await checked_numbers.edit(TEXTS['error'][user_data.language])
+#         except Exception:
+#             await event.respond(TEXTS['error'][user_data.language])
+
+# -------------------------------------- #
+
+def extract_number(entry):
+    match = re.match(r'^(\d+)\|', entry)
+    return match.group(1) if match else entry
+
+def worker(queue, result_queue):
+    async def process_number(user_id, number, index, original_entry):
+        retries = 3  # اگر محدود شد، 3 بار تلاش مجدد کند
+        while retries > 0:
+            try:
+                await asyncio.sleep(random.uniform(1, 3))  # تأخیر تصادفی برای جلوگیری از بلاک شدن
+
+                status = await Telegram(
+                    phone_number=number,
+                    user_id=user_id,
+                    method=Setting.select().first().check_type,
+                    proxy={'proxy_type': python_socks.ProxyType.SOCKS5, 'addr': 'p.webshare.io', 'port': 80, 'username': 'lfkjopqn-rotate', 'password': 'ljx4agduh1rf', 'rdns': True}
+                ).check()
+                
+                if status[0] == "limit":  
+                    logger.warning(f'Rate limited for number {number}, retrying...')
+                    retries -= 1
+                    await asyncio.sleep(5)  # 5 ثانیه صبر کند و دوباره امتحان کند
+                    continue  # تلاش مجدد
+                
+                result_queue.put((index, original_entry, status[0], status[1]))
+                logger.info(f'Checked Number {index}: {number} -> {status[0]}')
+                break  # موفق شد، پس دیگر نیازی به تلاش مجدد نیست
+            
+            except Exception as e:
+                logger.error(f'Error checking number {index}: {number} - {e}')
+                result_queue.put((index, original_entry, "Failed", "failed"))
+                break  # در صورت خطا دیگر تلاش نکند
+
+    while True:
+        task = queue.get()
+        if task is None:
+            break
+        user_id, number, index, original_entry = task
+        asyncio.run(process_number(user_id, number, index, original_entry))
 
 async def check_numbers(event, user_id, numbers, checked_numbers, is_file=False):
-    try:
-        user_data, _ = User.get_or_create(user_id=user_id)
-        bot = await getClient()
+    user_data, _ = User.get_or_create(user_id=user_id)
+    bot = await getClient()
+    if not numbers:
+        return await checked_numbers.edit(TEXTS['error'][user_data.language])
 
-        if not numbers:
-            return await checked_numbers.edit(TEXTS['error'][user_data.language])
+    queue = AioQueue()
+    result_queue = AioQueue()
+    num_workers = min(len(numbers), BATCH_SIZE)
+    workers = [AioProcess(target=worker, args=(queue, result_queue)) for _ in range(num_workers)]
+    
+    for w in workers:
+        w.start()
 
-        live_status = {'total_numbers': len(numbers), 'true_numbers': 0, 'has_session': 0, 'ban_numbers': 0, 'limit_numbers': 0, 'other': 0}
-        results = set()
-        batch_tasks = []
+    processed_numbers = [(index, extract_number(entry), entry) for index, entry in enumerate(set(numbers), start=1)]
 
-        async def process_batch(last_batch=False):
-            nonlocal batch_tasks
-            checked_batch = await asyncio.gather(*batch_tasks)
+    for index, number, original_entry in processed_numbers:
+        queue.put((user_id, number, index, original_entry))
 
-            for result_tuple in checked_batch:
-                if isinstance(result_tuple, tuple) and len(result_tuple) == 2:
-                    result, status = result_tuple
-                    if result not in results:
-                        results.add((result, status))
+    for _ in workers:
+        queue.put(None)
 
-            batch_tasks = []
-
-            sorted_results = sorted(results, key=lambda x: int(x[0].split(")")[0]))
-
-            if is_file:
-                file_data = {}
-                for result, status in sorted_results:
-                    number = result.split(' ')[2]
-                    file_data.setdefault(status, []).append(number)
-
-                for status, numbers in file_data.items():
-                    file_name = f'{status}_{user_id}.txt'
-                    with open(file_name, 'w', encoding='utf-8') as file:
-                        file.write('\n'.join(numbers) + '\n')
-
-            else:
-                checked_texts = "\n".join([r for r, _ in sorted_results])
-                if last_batch:
-                    response = TEXTS['checked_result'][user_data.language].format(checked_texts, TEXTS['done'][user_data.language])
-                else:
-                    response = TEXTS['checked_result'][user_data.language].format(checked_texts, TEXTS['checking_more_numbers'][user_data.language])
-
-                if len(results) <= BATCH_SIZE:
-                    await checked_numbers.edit(response)
-                else:
-                    await event.respond(response)
-
-        unique_numbers = list(set(numbers))
-        checked_count = 0
-
-        for index, number in enumerate(unique_numbers, start=1):
-            # Pass live_status to check_number
-            batch_tasks.append(check_number(user_id, numbers, number, index, live_status, checked_numbers))
-
-            if len(batch_tasks) == BATCH_SIZE:
-                remaining_numbers = len(unique_numbers) - (index + 1)
-                last_batch = remaining_numbers <= 0
-                await process_batch(last_batch=last_batch)
-            
-            elif len(unique_numbers) <= BATCH_SIZE and index % (UPDATE_INTERVAL if UPDATE_INTERVAL <= len(numbers) else len(numbers)) == 0:
-                remaining_numbers = len(unique_numbers) - (index + 1)
-                last_batch = remaining_numbers <= 0
-                await process_batch(last_batch=last_batch)
-
-        if batch_tasks:
-            await process_batch(last_batch=True)
+    results = []
+    file_data = {}
+    message_chunks = []
+    
+    while len(results) < len(numbers):
+        index, original_entry, result, status = await result_queue.coro_get()
+        results.append((index, original_entry, result, status))
 
         if is_file:
-            unique_statuses = set(status for _, status in results)
+            file_data.setdefault(status, []).append(original_entry)
+        else:
+            message_chunks.append((index, f"{index}) {extract_number(original_entry)} {result}"))
 
-            for status in unique_statuses:
-                file_name = f'{status}_{user_id}.txt'
-                caption = '<b>' + get_caption(status, user_data.language) + '</b>'
-                
-                if os.path.exists(file_name) and os.path.getsize(file_name) > 0:
-                    await bot.send_file(entity=user_id, file=file_name, caption=caption)
-                    os.unlink(file_name)
+        if not is_file and len(message_chunks) >= 100:
+            message_chunks.sort(key=lambda x: x[0])  # مرتب‌سازی بر اساس ایندکس
+            checked_texts = '\n'.join([msg for _, msg in message_chunks])
+            await bot.send_message(user_id, TEXTS['checked_result'][user_data.language].format(checked_texts, TEXTS['checking_more_numbers'][user_data.language]))
+            message_chunks = []
 
-    except Exception as error:
-        logger.error(f'[check_numbers] -> Error: {error}')
-        traceback.print_exc()
-        
-        try:
-            await checked_numbers.edit(TEXTS['error'][user_data.language])
-        except Exception:
-            await event.respond(TEXTS['error'][user_data.language])
+    for w in workers:
+        w.join()
+
+    if not is_file:
+        if message_chunks:
+            message_chunks.sort(key=lambda x: x[0])
+            checked_texts = '\n'.join([msg for _, msg in message_chunks])
+            await bot.send_message(user_id, TEXTS['checked_result'][user_data.language].format(checked_texts, TEXTS['done'][user_data.language]))
+
+    if is_file:
+        for status, entries in file_data.items():
+            file_name = f'{status}_{user_id}.txt'
+            with open(file_name, 'w', encoding='utf-8') as file:
+                file.write('\n'.join(entries) + '\n')
+            
+            caption = '<b>' + get_caption(status, user_data.language) + '</b>'
+            if os.path.exists(file_name) and os.path.getsize(file_name) > 0:
+                await bot.send_file(entity=user_id, file=file_name, caption=caption)
+                os.unlink(file_name)
